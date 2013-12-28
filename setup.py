@@ -12,6 +12,8 @@ import sqlite_dbm as mod
 
 DOC = mod.__doc__.strip()
 
+# For first pypi publish use: ./setup.py register
+# and then use: ./setup.py publish
 open('README.md', 'w').write(DOC)
 if sys.argv[-1] == 'publish':
     if not doctest.testfile('README.md', verbose=True).failed:
