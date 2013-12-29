@@ -7,7 +7,7 @@ Dict-style DBM based on sqlite3.
     >>> db = sqlite_dbm.open('./test.sqlite')
     >>> db['foo'] = 'bar'
     >>> db['foo']
-    u'bar'
+    'bar'
     >>> del db['foo']
     >>> len(db)
     0
@@ -28,7 +28,7 @@ import sqlite3
 from UserDict import DictMixin
 
 
-__version__ = '1.0.0'
+__version__ = '1.1.0'
 
 
 class SQLiteDBM(DictMixin):
@@ -62,9 +62,12 @@ class SQLiteDBM(DictMixin):
         data = self.cur.fetchone()
         if not data:
             raise KeyError(key)
-        return data[1]
+        return str(data[1]).decode('zlib')
 
     def __setitem__(self, key, value):
+        if not isinstance(value, str):
+            raise ValueError('value must be a string')
+        value = sqlite3.Binary(value.encode('zlib'))
         self.cur.execute(
             'REPLACE INTO kv (id, value) VALUES (?, ?)', (key, value))
         if self.auto_commit:
