@@ -6,7 +6,7 @@ Dict-style DBM based on sqlite3.
     >>> db = sqlite_dbm.open('./test.sqlite')
     >>> db['foo'] = 'bar'
     >>> db['foo']
-    u'bar'
+    'bar'
     >>> del db['foo']
     >>> len(db)
     0

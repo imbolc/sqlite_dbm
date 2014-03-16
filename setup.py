@@ -37,5 +37,7 @@ setup(
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: ISC License (ISCL)',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 3',
     ],
 )

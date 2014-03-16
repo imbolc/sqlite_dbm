@@ -5,9 +5,9 @@ Dict-style DBM based on sqlite3.
 
     >>> import sqlite_dbm
     >>> db = sqlite_dbm.open('./test.sqlite')
-    >>> db['foo'] = 'bar'
+    >>> db['foo'] = ['bar', 'baz', {'a': 1}]
     >>> db['foo']
-    'bar'
+    ['bar', 'baz', {'a': 1}]
     >>> del db['foo']
     >>> len(db)
     0
@@ -16,7 +16,7 @@ Dict-style DBM based on sqlite3.
 Fast insert:
 
     >>> db = sqlite_dbm.open('./test.sqlite', auto_commit=False)
-    >>> for i in xrange(1000):
+    >>> for i in range(1000):
     ...     db[str(i)] = 'foo'
     >>> db.commit()
     >>> len(db)
@@ -24,11 +24,16 @@ Fast insert:
     >>> db.clear()
     >>> db.close()
 '''
+import zlib
+import pickle
 import sqlite3
-from UserDict import DictMixin
+try:
+    from UserDict import DictMixin
+except ImportError:
+    from collections import MutableMapping as DictMixin
 
 
-__version__ = '1.1.0'
+__version__ = '2.0.0'
 
 
 class SQLiteDBM(DictMixin):
@@ -45,8 +50,8 @@ class SQLiteDBM(DictMixin):
     def create_table(self):
         self.cur.execute(
             '''CREATE TABLE IF NOT EXISTS kv (
-                id    VARCHAR PRIMARY KEY,
-                value VARCHAR
+                id     VARCHAR PRIMARY KEY,
+                value  VARCHAR
             )''')
         self.conn.commit()
 
@@ -62,14 +67,13 @@ class SQLiteDBM(DictMixin):
         data = self.cur.fetchone()
         if not data:
             raise KeyError(key)
-        return str(data[1]).decode('zlib')
+        return pickle.loads(zlib.decompress(data[1]))
 
     def __setitem__(self, key, value):
-        if not isinstance(value, str):
-            raise ValueError('value must be a string')
-        value = sqlite3.Binary(value.encode('zlib'))
+        value = sqlite3.Binary(zlib.compress(pickle.dumps(value)))
         self.cur.execute(
-            'REPLACE INTO kv (id, value) VALUES (?, ?)', (key, value))
+            'REPLACE INTO kv (id, value) VALUES (?, ?)', (
+                key, value))
         if self.auto_commit:
             self.conn.commit()
 
@@ -79,8 +83,15 @@ class SQLiteDBM(DictMixin):
             self.conn.commit()
 
     def keys(self):
+        return list(self)
+
+    def __len__(self):
+        self.cur.execute('SELECT count(*) FROM kv')
+        return self.cur.fetchone()[0]
+
+    def __iter__(self):
         self.cur.execute('SELECT id FROM kv')
-        return [r[0] for r in self.cur.fetchall()]
+        return (r[0] for r in self.cur.fetchall())
 
 
 def open(*args, **kwargs):
