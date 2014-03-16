@@ -24,6 +24,7 @@ Fast insert:
     >>> db.clear()
     >>> db.close()
 '''
+import sys
 import zlib
 import pickle
 import sqlite3
@@ -33,7 +34,9 @@ except ImportError:
     from collections import MutableMapping as DictMixin
 
 
-__version__ = '2.1.0'
+__version__ = '2.1.1'
+pickle_loads = pickle.loads if sys.version_info < (3, ) else (
+    lambda *a, **k: pickle.loads(*a, encoding='bytes', **k))
 
 
 class SQLiteDBM(DictMixin):
@@ -68,7 +71,7 @@ class SQLiteDBM(DictMixin):
         data = self.cur.fetchone()
         if not data:
             raise KeyError(key)
-        return pickle.loads(zlib.decompress(data[1]))
+        return pickle_loads(zlib.decompress(data[1]))
 
     def __setitem__(self, key, value):
         value = sqlite3.Binary(
@@ -102,4 +105,8 @@ def open(*args, **kwargs):
 
 if __name__ == "__main__":
     import doctest
-    doctest.testmod(verbose=True)
+    #doctest.testmod(verbose=True)
+
+    db = open('usda-csv.sqlite')
+    for k in db:
+        print(db[k])
