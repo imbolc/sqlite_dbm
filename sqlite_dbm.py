@@ -33,13 +33,14 @@ except ImportError:
     from collections import MutableMapping as DictMixin
 
 
-__version__ = '2.0.0'
+__version__ = '2.1.0'
 
 
 class SQLiteDBM(DictMixin):
-    def __init__(self, filename, auto_commit=True):
+    def __init__(self, filename, auto_commit=True, pickle_protocol=2):
         self.filename = filename
         self.auto_commit = auto_commit
+        self.pickle_protocol = pickle_protocol
         self.open()
 
     def open(self):
@@ -70,7 +71,8 @@ class SQLiteDBM(DictMixin):
         return pickle.loads(zlib.decompress(data[1]))
 
     def __setitem__(self, key, value):
-        value = sqlite3.Binary(zlib.compress(pickle.dumps(value)))
+        value = sqlite3.Binary(
+            zlib.compress(pickle.dumps(value, protocol=self.pickle_protocol)))
         self.cur.execute(
             'REPLACE INTO kv (id, value) VALUES (?, ?)', (
                 key, value))
