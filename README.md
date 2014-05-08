@@ -4,9 +4,9 @@ Dict-style DBM based on sqlite3.
 
     >>> import sqlite_dbm
     >>> db = sqlite_dbm.open('./test.sqlite')
-    >>> db['foo'] = ['bar', 'baz', {'a': 1}]
+    >>> db['foo'] = [1, 2, 3]
     >>> db['foo']
-    ['bar', 'baz', {'a': 1}]
+    [1, 2, 3]
     >>> del db['foo']
     >>> len(db)
     0

@@ -5,9 +5,9 @@ Dict-style DBM based on sqlite3.
 
     >>> import sqlite_dbm
     >>> db = sqlite_dbm.open('./test.sqlite')
-    >>> db['foo'] = ['bar', 'baz', {'a': 1}]
+    >>> db['foo'] = [1, 2, 3]
     >>> db['foo']
-    ['bar', 'baz', {'a': 1}]
+    [1, 2, 3]
     >>> del db['foo']
     >>> len(db)
     0
@@ -26,7 +26,9 @@ Fast insert:
 '''
 import sys
 import zlib
+import json
 import pickle
+import marshal
 import sqlite3
 try:
     from UserDict import DictMixin
@@ -34,17 +36,36 @@ except ImportError:
     from collections import MutableMapping as DictMixin
 
 
-__version__ = '2.1.1'
-pickle_loads = pickle.loads if sys.version_info < (3, ) else (
-    lambda *a, **k: pickle.loads(*a, encoding='bytes', **k))
+__version__ = '3.0.0'
+
+if sys.version_info < (3, ):
+    pickle_loads = pickle.loads
+    bytes = str
+else:
+    pickle_loads = lambda *a, **k: pickle.loads(*a, encoding='bytes', **k)
 
 
 class SQLiteDBM(DictMixin):
-    def __init__(self, filename, auto_commit=True, pickle_protocol=2):
+    def __init__(self, filename, auto_commit=True, dumper='json',
+                 compress_level=0, pickle_protocol=2):
         self.filename = filename
         self.auto_commit = auto_commit
         self.pickle_protocol = pickle_protocol
+        self.compress_level = compress_level
+        assert dumper in ['pickle', 'json', 'marshal'], 'unknown dumper'
+        if dumper == 'pickle':
+            self.loads = pickle_loads
+            self.dumps = self._pickle_dumps
+        elif dumper == 'json':
+            self.loads = lambda data: json.loads(data.decode('utf-8'))
+            self.dumps = lambda data: json.dumps(data).encode('utf-8')
+        else:
+            self.loads = marshal.loads
+            self.dumps = marshal.dumps
         self.open()
+
+    def _pickle_dumps(self, data):
+        return pickle.dumps(data, protocol=self.pickle_protocol)
 
     def open(self):
         self.conn = sqlite3.connect(self.filename)
@@ -71,11 +92,17 @@ class SQLiteDBM(DictMixin):
         data = self.cur.fetchone()
         if not data:
             raise KeyError(key)
-        return pickle_loads(zlib.decompress(data[1]))
+        data = data[1]
+        data = bytes(data)
+        if self.compress_level:
+            data = zlib.decompress(data)
+        return self.loads(data)
 
     def __setitem__(self, key, value):
-        value = sqlite3.Binary(
-            zlib.compress(pickle.dumps(value, protocol=self.pickle_protocol)))
+        value = self.dumps(value)
+        if self.compress_level:
+            value = zlib.compress(value)
+        value = sqlite3.Binary(value)
         self.cur.execute(
             'REPLACE INTO kv (id, value) VALUES (?, ?)', (
                 key, value))
@@ -105,8 +132,4 @@ def open(*args, **kwargs):
 
 if __name__ == "__main__":
     import doctest
-    #doctest.testmod(verbose=True)
-
-    db = open('usda-csv.sqlite')
-    for k in db:
-        print(db[k])
+    doctest.testmod(verbose=True)
