@@ -4,10 +4,10 @@ sqlite-dbm
 Dict-style DBM based on sqlite3.
 
     >>> import sqlite_dbm
-    >>> db = sqlite_dbm.open('./test.sqlite')
-    >>> db['foo'] = [1, 2, 3]
+    >>> db = sqlite_dbm.open(':memory:')
+    >>> db['foo'] = ['bar', {'baz': 1}]
     >>> db['foo']
-    [1, 2, 3]
+    ['bar', {'baz': 1}]
     >>> del db['foo']
     >>> len(db)
     0
@@ -15,7 +15,7 @@ Dict-style DBM based on sqlite3.
 
 Fast insert:
 
-    >>> db = sqlite_dbm.open('./test.sqlite', auto_commit=False)
+    >>> db = sqlite_dbm.open(':memory:', auto_commit=False)
     >>> for i in range(1000):
     ...     db[str(i)] = 'foo'
     >>> db.commit()
@@ -23,6 +23,15 @@ Fast insert:
     1000
     >>> db.clear()
     >>> db.close()
+
+sqlite_dbm.open options
+-----------------------
+- **filename** - first required argument
+- **auto_commit=True** - auto commit after each db update
+- **dumper='pickle'** - one of 'pickle', 'json' or 'marshal'
+- **compress_level=9** - if set it to 0, compression will be disabled
+- **smart_compress=True** - compress only if compressed size less than raw
+- **pickle_protocol=2** - see pickle docs
 '''
 import sys
 import zlib
@@ -36,22 +45,25 @@ except ImportError:
     from collections import MutableMapping as DictMixin
 
 
-__version__ = '3.0.0'
+__version__ = '3.1.0'
 
 if sys.version_info < (3, ):
     pickle_loads = pickle.loads
     bytes = str
 else:
     pickle_loads = lambda *a, **k: pickle.loads(*a, encoding='bytes', **k)
+compress_prefix = 'z'.encode('utf-8')
+uncompress_prefix = 'u'.encode('utf-8')
 
 
 class SQLiteDBM(DictMixin):
-    def __init__(self, filename, auto_commit=True, dumper='json',
-                 compress_level=0, pickle_protocol=2):
+    def __init__(self, filename, auto_commit=True, dumper='pickle',
+                 compress_level=9, smart_compress=True, pickle_protocol=2):
         self.filename = filename
         self.auto_commit = auto_commit
         self.pickle_protocol = pickle_protocol
         self.compress_level = compress_level
+        self.smart_compress = smart_compress
         assert dumper in ['pickle', 'json', 'marshal'], 'unknown dumper'
         if dumper == 'pickle':
             self.loads = pickle_loads
@@ -73,11 +85,14 @@ class SQLiteDBM(DictMixin):
         self.create_table()
 
     def create_table(self):
-        self.cur.execute(
-            '''CREATE TABLE IF NOT EXISTS kv (
-                id     VARCHAR PRIMARY KEY,
-                value  VARCHAR
-            )''')
+        fields = [
+            'id     VARCHAR PRIMARY KEY',
+            'value  BLOB',
+        ]
+        if self.compress_level and self.smart_compress:
+            fields.append('compressed BOOLEAN')
+        self.cur.execute('CREATE TABLE IF NOT EXISTS kv ( %s )' % (
+            ',\n'.join(fields)))
         self.conn.commit()
 
     def commit(self):
@@ -92,20 +107,34 @@ class SQLiteDBM(DictMixin):
         data = self.cur.fetchone()
         if not data:
             raise KeyError(key)
-        data = data[1]
-        data = bytes(data)
-        if self.compress_level:
-            data = zlib.decompress(data)
-        return self.loads(data)
+        if self.compress_level and self.smart_compress:
+            if data[2]:
+                dump = zlib.decompress(data[1])
+            else:
+                dump = data[1]
+        elif self.compress_level:
+            dump = zlib.decompress(data[1])
+        else:
+            dump = data[1]
+        return self.loads(bytes(dump))
 
     def __setitem__(self, key, value):
-        value = self.dumps(value)
+        dump = self.dumps(value)
         if self.compress_level:
-            value = zlib.compress(value)
-        value = sqlite3.Binary(value)
-        self.cur.execute(
-            'REPLACE INTO kv (id, value) VALUES (?, ?)', (
-                key, value))
+            compressed_dump = zlib.compress(dump)
+            if self.smart_compress:
+                if len(compressed_dump) < len(dump):
+                    value, compressed = compressed_dump, True
+                else:
+                    value, compressed = dump, False
+                q = 'REPLACE INTO kv (id, value, compressed) VALUES (?, ?, ?)'
+                self.cur.execute(q, (key, sqlite3.Binary(value), compressed))
+            else:
+                q = 'REPLACE INTO kv (id, value) VALUES (?, ?)'
+                self.cur.execute(q, (key, sqlite3.Binary(compressed_dump)))
+        else:
+            q = 'REPLACE INTO kv (id, value) VALUES (?, ?)'
+            self.cur.execute(q, (key, sqlite3.Binary(dump)))
         if self.auto_commit:
             self.conn.commit()
 
@@ -133,3 +162,4 @@ def open(*args, **kwargs):
 if __name__ == "__main__":
     import doctest
     doctest.testmod(verbose=True)
+    # doctest.testmod()
