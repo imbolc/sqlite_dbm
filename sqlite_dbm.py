@@ -28,11 +28,12 @@ sqlite_dbm.open options
 -----------------------
 - **filename** - first required argument
 - **auto_commit=True** - auto commit after each db update
-- **dumper='pickle'** - one of 'pickle', 'json' or 'marshal'
+- **dumper='pickle'** - one of 'pickle', 'json' or 'marshal' or 'str'
 - **compress_level=9** - if set it to 0, compression will be disabled
 - **smart_compress=True** - compress only if compressed size less than raw
 - **pickle_protocol=2** - see pickle docs
 '''
+from __future__ import print_function
 import sys
 import zlib
 import json
@@ -45,7 +46,7 @@ except ImportError:
     from collections import MutableMapping as DictMixin
 
 
-__version__ = '3.1.0'
+__version__ = '3.2.0'
 
 if sys.version_info < (3, ):
     pickle_loads = pickle.loads
@@ -64,16 +65,19 @@ class SQLiteDBM(DictMixin):
         self.pickle_protocol = pickle_protocol
         self.compress_level = compress_level
         self.smart_compress = smart_compress
-        assert dumper in ['pickle', 'json', 'marshal'], 'unknown dumper'
+        assert dumper in ['pickle', 'json', 'marshal', 'str'], 'unknown dumper'
         if dumper == 'pickle':
             self.loads = pickle_loads
             self.dumps = self._pickle_dumps
         elif dumper == 'json':
             self.loads = lambda data: json.loads(data.decode('utf-8'))
             self.dumps = lambda data: json.dumps(data).encode('utf-8')
-        else:
+        elif dumper == 'marshal':
             self.loads = marshal.loads
             self.dumps = marshal.dumps
+        else:
+            self.loads = lambda data: data.decode('utf-8')
+            self.dumps = lambda data: data.encode('utf-8')
         self.open()
 
     def _pickle_dumps(self, data):
@@ -161,5 +165,8 @@ def open(*args, **kwargs):
 
 if __name__ == "__main__":
     import doctest
-    doctest.testmod(verbose=True)
+    # doctest.testmod(verbose=True)
     # doctest.testmod()
+    print(doctest.testmod(
+        optionflags=doctest.REPORT_ONLY_FIRST_FAILURE
+    ))
