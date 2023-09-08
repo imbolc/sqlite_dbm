@@ -43,10 +43,13 @@ import sqlite3
 try:
     from UserDict import DictMixin
 except ImportError:
-    from collections import MutableMapping as DictMixin
+    try:
+        from collections import MutableMapping as DictMixin
+    except ImportError:
+        # https://stackoverflow.com/questions/70870041/cannot-import-name-mutablemapping-from-collections/70870131#70870131
+        from collections.abc import MutableMapping as DictMixin
 
-
-__version__ = '3.2.0'
+__version__ = '3.2.1'
 
 if sys.version_info < (3, ):
     pickle_loads = pickle.loads
@@ -103,6 +106,8 @@ class SQLiteDBM(DictMixin):
         self.conn.commit()
 
     def close(self):
+        # https://github.com/ghaering/pysqlite/issues/109
+        self.conn.isolation_level = None
         self.conn.execute("VACUUM")
         self.conn.close()
 
